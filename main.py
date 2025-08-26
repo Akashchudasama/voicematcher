@@ -7,8 +7,8 @@ UPLOAD_FOLDER = "uploaded_audios"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)  # create folder if not exists
 
 # Streamlit page setup
-st.set_page_config(page_title="Voice Matcher — Demo", page_icon="🎤", layout="wide")
-st.title("🎤 Voice Matcher — Demo")
+st.set_page_config(page_title="Voice Matcher", page_icon="🎤", layout="wide")
+st.title("🎤 Voice Matcher")
 st.markdown(
     "Upload **two audio files** to compare their similarity. "
     "You can also listen to the files before comparing them."
