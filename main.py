@@ -1,78 +1,59 @@
-import tkinter as tk
-from tkinter import filedialog, messagebox
+import streamlit as st
 from compare import compare_files
-import threading
+import os
 
-def select_file(entry):
-    path = filedialog.askopenfilename(
-        filetypes=[("Audio files", "*.wav *.mp3 *.flac *.ogg"), ("All files", "*.*")]
-    )
-    if path:
-        entry.delete(0, tk.END)
-        entry.insert(0, path)
+# Set folder to save uploads
+UPLOAD_FOLDER = "uploaded_audios"
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)  # create folder if not exists
 
-def run_compare(path1, path2, result_text, compare_button):
-    try:
-        compare_button.config(state=tk.DISABLED)
-        result_text.set("Processing... (this may take a few seconds)")
-        res = compare_files(path1, path2)
-        txt = (
-            f"Cosine similarity: {res['cosine_similarity']:.3f}\n"
-            f"DTW similarity: {res['dtw_similarity']:.3f}\n"
-            f"Combined score: {res['combined_score']:.3f}\n\n"
-            f"Verdict: {res['verdict']}"
-        )
-        result_text.set(txt)
-    except Exception as e:
-        result_text.set("Error: " + str(e))
-    finally:
-        compare_button.config(state=tk.NORMAL)
+# Streamlit page setup
+st.set_page_config(page_title="Voice Matcher — Demo", page_icon="🎤", layout="wide")
+st.title("🎤 Voice Matcher — Demo")
+st.markdown(
+    "Upload **two audio files** to compare their similarity. "
+    "You can also listen to the files before comparing them."
+)
 
-def on_compare(e1, e2, result_text, compare_button):
-    p1 = e1.get().strip()
-    p2 = e2.get().strip()
-    if not p1 or not p2:
-        messagebox.showwarning("Missing files", "Please select two audio files first.")
-        return
-    # Run in thread to keep UI responsive
-    threading.Thread(
-        target=run_compare,
-        args=(p1, p2, result_text, compare_button),
-        daemon=True
-    ).start()
+# Variables for file paths
+path1, path2 = None, None
 
-def build_ui():
-    root = tk.Tk()
-    root.title("Voice Matcher — Demo")
-    root.geometry("640x320")
+# Layout with two columns for upload
+col1, col2 = st.columns(2)
 
-    tk.Label(root, text="Voice Matcher — Demo", font=(None, 16, 'bold')).pack(pady=8)
+with col1:
+    file1 = st.file_uploader("🎵 Select first audio file", type=["wav", "mp3", "flac", "ogg"], key="file1")
+    if file1:
+        st.audio(file1, format="audio/wav")
+        path1 = os.path.join(UPLOAD_FOLDER, file1.name)
+        with open(path1, "wb") as f:
+            f.write(file1.getbuffer())
 
-    frame = tk.Frame(root)
-    frame.pack(padx=12, pady=8, fill=tk.X)
+with col2:
+    file2 = st.file_uploader("🎵 Select second audio file", type=["wav", "mp3", "flac", "ogg"], key="file2")
+    if file2:
+        st.audio(file2, format="audio/wav")
+        path2 = os.path.join(UPLOAD_FOLDER, file2.name)
+        with open(path2, "wb") as f:
+            f.write(file2.getbuffer())
 
-    tk.Label(frame, text="File 1:").grid(row=0, column=0, sticky='w')
-    e1 = tk.Entry(frame, width=60)
-    e1.grid(row=0, column=1, padx=6)
-    tk.Button(frame, text="Browse", command=lambda: select_file(e1)).grid(row=0, column=2)
+st.markdown("---")
 
-    tk.Label(frame, text="File 2:").grid(row=1, column=0, sticky='w')
-    e2 = tk.Entry(frame, width=60)
-    e2.grid(row=1, column=1, padx=6)
-    tk.Button(frame, text="Browse", command=lambda: select_file(e2)).grid(row=1, column=2)
+# Compare button
+if st.button("Compare Voices"):
+    if not path1 or not path2:
+        st.warning("⚠️ Please upload **two audio files** first.")
+    else:
+        with st.spinner("🔄 Comparing files..."):
+            try:
+                # Use the saved paths for comparison
+                res = compare_files(path1, path2)
 
-    result_text = tk.StringVar()
-    result_text.set("Select two audio files and click Compare.")
-
-    compare_button = tk.Button(
-        root, text="Compare", width=20,
-        command=lambda: on_compare(e1, e2, result_text, compare_button)
-    )
-    compare_button.pack(pady=12)
-
-    tk.Label(root, textvariable=result_text, justify='left', anchor='w').pack(padx=12, fill=tk.BOTH)
-
-    root.mainloop()
-
-if __name__ == '__main__':
-    build_ui()
+                st.subheader("📊 Comparison Results")
+                st.markdown(f"""
+                    **Cosine Similarity:** `{res['cosine_similarity']:.3f}`  
+                    **DTW Similarity:** `{res['dtw_similarity']:.3f}`  
+                    **Combined Score:** `{res['combined_score']:.3f}`  
+                    **Verdict:** **{res['verdict']}**
+                """)
+            except Exception as e:
+                st.error(f"❌ Error: {e}")

@@ -2,23 +2,34 @@ import numpy as np
 import librosa
 from scipy.spatial.distance import cosine
 import librosa.sequence
+import io
 
-def load_audio(path, sr=16000, mono=True):
-    # librosa will resample; sr=None to keep original but we standardize to 16k
-    y, _ = librosa.load(path, sr=sr, mono=mono)
+def load_audio(source, sr=16000, mono=True):
+    """
+    Load audio from a file path or a file-like object (BytesIO)
+    """
+    if isinstance(source, (str, bytes)):
+        # string path
+        y, _ = librosa.load(source, sr=sr, mono=mono)
+        name = source if isinstance(source, str) else "BytesIO"
+    elif isinstance(source, io.BytesIO):
+        source.seek(0)  # make sure we're at the start
+        y, _ = librosa.load(source, sr=sr, mono=mono)
+        name = "BytesIO"
+    else:
+        raise TypeError("source must be a file path or BytesIO object")
+
     if y.size == 0:
-        raise ValueError("Loaded audio is empty: " + path)
-    print(f"[INFO] Loaded '{path}' with {len(y)} samples at {sr} Hz")
+        raise ValueError(f"Loaded audio is empty: {name}")
+    print(f"[INFO] Loaded '{name}' with {len(y)} samples at {sr} Hz")
     return y, sr
 
 def extract_mfcc(y, sr, n_mfcc=13, hop_length=512):
     mfcc = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=n_mfcc, hop_length=hop_length)
     print(f"[INFO] Extracted MFCCs: shape = {mfcc.shape}")
-    # mfcc shape: (n_mfcc, frames)
     return mfcc
 
 def embedding_from_mfcc(mfcc):
-    # Simple embedding: mean + std concatenated
     mean = np.mean(mfcc, axis=1)
     std = np.std(mfcc, axis=1)
     emb = np.concatenate([mean, std])
@@ -26,27 +37,28 @@ def embedding_from_mfcc(mfcc):
     return emb
 
 def cosine_similarity(a, b):
-    # returns similarity in [0,1] where 1 means identical
     d = cosine(a, b)
     if np.isnan(d):
         return 0.0
     return 1.0 - d
 
 def normalized_dtw_distance(m1, m2):
-    # Compute DTW cost between sequences (using MFCC frames) and normalize by path length
-    # m1, m2 shapes: (n_mfcc, frames)
     D, wp = librosa.sequence.dtw(X=m1, Y=m2, metric='euclidean')
     cost = D[-1, -1]
     path_length = len(wp)
     if path_length == 0:
         return 1.0
     norm_cost = cost / path_length
-    sim = np.exp(-norm_cost / 50.0)  # exponential decay to map cost -> [0,1]
+    sim = np.exp(-norm_cost / 50.0)
     return float(sim)
 
-def compare_files(path1, path2):
-    y1, sr1 = load_audio(path1)
-    y2, sr2 = load_audio(path2)
+def compare_files(path1, path2, in_memory=False):
+    """
+    path1, path2: either file paths or BytesIO objects
+    in_memory: if True, treat as BytesIO
+    """
+    y1, sr1 = load_audio(path1 if not in_memory else path1)
+    y2, sr2 = load_audio(path2 if not in_memory else path2)
 
     mfcc1 = extract_mfcc(y1, sr1)
     mfcc2 = extract_mfcc(y2, sr2)
@@ -55,7 +67,7 @@ def compare_files(path1, path2):
     emb2 = embedding_from_mfcc(mfcc2)
 
     cos_sim = cosine_similarity(emb1, emb2)
-    dtw_sim = normalized_dtw_distance(mfcc1, mfcc2)  # ✅ fixed, no transpose
+    dtw_sim = normalized_dtw_distance(mfcc1, mfcc2)
 
     combined = 0.6 * cos_sim + 0.4 * dtw_sim
     verdict = "SAME PERSON" if combined >= 0.65 else "DIFFERENT PERSON"
